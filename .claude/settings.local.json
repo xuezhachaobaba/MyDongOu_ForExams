@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la *.py *.md *.txt)",
+      "Bash(python -c \"\nfrom data_generator import DataGenerator\nprint\\(''测试数据生成器...''\\)\ngenerator = DataGenerator\\(\\)\nschedule = generator.create_small_test_case\\(\\)\nprint\\(f''✅ 数据生成成功: {len\\(schedule.teachers\\)}名教师, {len\\(schedule.exams\\)}个考试''\\)\nprint\\(f''✅ 总监考任务数: {sum\\(exam.get_total_rooms\\(\\) for exam in schedule.exams\\)}''\\)\nprint\\(''✅ 系统基础功能正常''\\)\n\")"
+    ]
+  }
+}

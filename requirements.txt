@@ -1,0 +1,25 @@
+# 智能排考系统依赖包
+
+# 核心算法库
+ortools>=9.7.2996
+deap>=1.3.3
+
+# 数据处理
+pandas>=2.0.0
+numpy>=1.24.0
+
+# 可视化
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Excel处理
+openpyxl>=3.1.0
+
+# 命令行参数解析（Python内置，列出供参考）
+# argparse
+
+# 单元测试（Python内置，列出供参考）
+# unittest
+
+# 类型提示（Python 3.8+内置）
+# typing
