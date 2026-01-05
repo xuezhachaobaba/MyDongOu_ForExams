@@ -272,26 +272,135 @@ class ResultVisualizer:
         excel_path = os.path.join(output_dir, f"监考安排表_{timestamp}.xlsx")
 
         with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-            # 1. 总监考表
+            # 1. 监考安排表（新格式，类似Excel文件中的格式）
+            self._export_monitoring_sheet(writer)
+
+            # 2. 总监考表
             self._export_overall_sheet(writer)
 
-            # 2. 按教师分表
+            # 3. 按教师分表
             self._export_by_teacher_sheet(writer)
 
-            # 3. 按时间分表
+            # 4. 按时间分表
             self._export_by_time_sheet(writer)
 
-            # 4. 按考场分表
+            # 5. 按考场分表
             self._export_by_room_sheet(writer)
 
-            # 5. 统计报表
+            # 6. 统计报表
             self._export_statistics_sheet(writer)
 
-            # 6. 冲突报告
+            # 7. 冲突报告
             self._export_conflicts_sheet(writer)
 
         print(f"Excel文件已导出: {excel_path}")
         return [excel_path]
+
+    def _export_monitoring_sheet(self, writer):
+        """导出监考安排表（类似Excel文件中的格式）"""
+        # 获取所有时间段，按日期和时间排序
+        time_slots = sorted(self.schedule.time_slots, key=lambda x: (x.date, x.start_time))
+
+        # 按日期分组时间段
+        dates = sorted(set(ts.date for ts in time_slots))
+        date_time_slots = {date: [ts for ts in time_slots if ts.date == date] for date in dates}
+
+        # 获取所有考场（按名称排序）
+        rooms = sorted(self.schedule.rooms, key=lambda x: x.name)
+
+        # 构建列名和数据
+        columns = self._build_monitoring_columns(dates, date_time_slots)
+        data_rows = []
+
+        for room in rooms:
+            row = self._build_monitoring_row(room, dates, date_time_slots)
+            data_rows.append(row)
+
+        # 创建DataFrame
+        df = pd.DataFrame(data_rows, columns=columns)
+
+        # 导出到Excel
+        df.to_excel(writer, sheet_name="监考安排表", index=False)
+
+    def _build_monitoring_columns(self, dates, date_time_slots):
+        """构建监考安排表的列名"""
+        columns = ['班级', '班级编号']
+
+        for date in dates:
+            time_slots_for_date = date_time_slots[date]
+            for ts in time_slots_for_date:
+                # 找到该时间段的考试科目
+                exam_subject = self._get_exam_subject_for_timeslot(ts)
+                time_range = f"{ts.start_time}-{ts.end_time}"
+
+                # 为每个时间段创建3列：监考教师A、监考教师B、学生人数
+                # 列名包含完整信息：日期_时间段_科目_时间_角色
+                columns.extend([
+                    f"{date}_{ts.name}_{exam_subject}_{time_range}_监考教师A",
+                    f"{date}_{ts.name}_{exam_subject}_{time_range}_监考教师B",
+                    f"{date}_{ts.name}_{exam_subject}_{time_range}_学生人数"
+                ])
+
+        return columns
+
+    def _get_exam_subject_for_timeslot(self, time_slot):
+        """获取指定时间段的考试科目"""
+        for exam in self.schedule.exams:
+            if exam.time_slot.id == time_slot.id:
+                return exam.subject.value
+        return ""
+
+    def _build_monitoring_row(self, room, dates, date_time_slots):
+        """为指定考场构建一行数据"""
+        row_data = ['', '']  # 班级、班级编号占位符
+
+        # 为考场确定班级信息（这里简单使用考场名称作为班级名）
+        if room.name.startswith('高二'):
+            # 提取班级信息，例如从"高二1班5001"中提取"高二1班"和"5001"
+            if '班' in room.name:
+                parts = room.name.split('班')
+                if len(parts) >= 2:
+                    class_name = parts[0] + '班'
+                    class_id = parts[1] if parts[1] else str(room.id)
+                    row_data[0] = class_name
+                    row_data[1] = class_id
+                else:
+                    row_data[0] = room.name
+                    row_data[1] = str(room.id)
+            else:
+                row_data[0] = room.name
+                row_data[1] = str(room.id)
+        else:
+            row_data[0] = room.name
+            row_data[1] = str(room.id)
+
+        # 为每个时间段-考场组合添加监考信息
+        for date in dates:
+            time_slots_for_date = date_time_slots[date]
+            for ts in time_slots_for_date:
+                # 获取该时间段该考场的监考教师
+                teachers = self._get_teachers_for_room_timeslot(room.id, ts.id)
+                student_count = room.capacity
+
+                # 添加3列数据：监考教师A、监考教师B、学生人数
+                if len(teachers) >= 2:
+                    row_data.extend([teachers[0], teachers[1], student_count])
+                elif len(teachers) == 1:
+                    row_data.extend([teachers[0], '/', student_count])
+                else:
+                    row_data.extend(['/', '/', student_count])
+
+        return row_data
+
+    def _get_teachers_for_room_timeslot(self, room_id, time_slot_id):
+        """获取指定考场和时间段的监考教师"""
+        assignments = []
+        for assignment in self.schedule.assignments:
+            if (assignment.room.id == room_id and
+                assignment.time_slot.id == time_slot_id and
+                assignment.is_invigilation):
+                assignments.append(assignment.teacher.name)
+        return assignments
 
     def _export_overall_sheet(self, writer):
         """导出总监考表"""
