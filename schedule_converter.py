@@ -184,51 +184,43 @@ class ScheduleConverter:
         self.time_slots = []
         base_dt = datetime.strptime(base_date, "%Y-%m-%d")
 
-        # 按日期和时间段分组
-        grouped_exams = {}
+        # 🔧 修复：直接为每个考试创建独立时间段
+        slot_id = 1
+        used_time_slots = {}  # 避免重复时间段
+
         for exam in self.exam_schedule:
+            # 计算实际日期
             date_str = exam['date']
             day_num = int(date_str.replace('第', '').replace('天', ''))
             actual_date = (base_dt + timedelta(days=day_num-1)).strftime("%Y-%m-%d")
 
-            key = (actual_date, exam['time_slot'])
-            if key not in grouped_exams:
-                grouped_exams[key] = []
-            grouped_exams[key].append(exam)
+            # 使用真实的考试时间
+            start_time = exam['start_time']
+            end_time = exam['end_time']
 
-        # 为每个组生成时间段
-        slot_id = 1
-        for (date, period), exams in grouped_exams.items():
-            if period == "上午" and len(exams) > 1:
-                # 上午多个考试，需要分成两个时间段
-                time_slot1 = self._create_time_slot(
-                    slot_id, date, "第1场",
-                    self.time_slot_templates["上午"]["start"],
-                    self.time_slot_templates["上午"]["end"],
-                    True, False
-                )
-                self.time_slots.append(time_slot1)
-                slot_id += 1
+            # 🔧 修复：生成唯一的时间段名称
+            period = exam['time_slot']
 
-                time_slot2 = self._create_time_slot(
-                    slot_id, date, "第2场",
-                    self.time_slot_templates["上午"]["alt_start"],
-                    self.time_slot_templates["上午"]["alt_end"],
-                    True, False
-                )
-                self.time_slots.append(time_slot2)
-                slot_id += 1
+            # 创建基于实际时间的唯一标识
+            exam_key = f"{actual_date}_{period}_{start_time.replace(':', '')}-{end_time.replace(':', '')}"
 
-            else:
-                # 其他情况，使用标准时间段
-                template = self.time_slot_templates[period]
+            if exam_key not in used_time_slots:
+                # 🔧 修复：使用真实的考试时间，不是模板时间
                 time_slot = self._create_time_slot(
-                    slot_id, date, f"{period}第1场",
-                    template["start"], template["end"],
-                    period == "上午", period == "下午"
+                    slot_id=slot_id,
+                    date=actual_date,
+                    name=f"{period}_{start_time}-{end_time}",  # 使用时间范围作为唯一标识
+                    start_time=start_time,  # 使用真实的开始时间
+                    end_time=end_time,       # 使用真实的结束时间
+                    is_morning=(period == "上午"),
+                    is_afternoon=(period == "下午")
                 )
                 self.time_slots.append(time_slot)
+                used_time_slots[exam_key] = True
                 slot_id += 1
+                print(f"  创建时间段: {actual_date} {period} {start_time}-{end_time}")
+            else:
+                print(f"  跳过重复时间段: {exam_key}")
 
         # 设置午休配对
         self._setup_lunch_pairs()

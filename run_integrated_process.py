@@ -7,6 +7,8 @@
 import os
 import json
 import sys
+import re
+from datetime import datetime
 from typing import Dict, Any, List
 
 # 导入各个组件
@@ -14,6 +16,7 @@ from basic_data_generator import BasicDataGenerator
 from exam_scheduler import ExamScheduler
 from schedule_converter import ScheduleConverter, ConversionConfig
 from main import IntelligentExamScheduler
+from visualization import ResultVisualizer
 
 
 class IntegratedProcess:
@@ -32,6 +35,8 @@ class IntegratedProcess:
         self.rooms_file = os.path.join(self.data_dir, "rooms.json")
         self.exam_schedule_file = os.path.join(self.data_dir, "exam_schedule.json")
         self.converted_data_file = os.path.join(self.data_dir, "converted_schedule.json")
+        # 新增：中间考试安排JSON文件
+        self.intermediate_exam_file = os.path.join(self.data_dir, "intermediate_exam_schedule.json")
 
     def run_complete_process(self, skip_data_generation=False):
         """运行完整流程"""
@@ -104,32 +109,78 @@ class IntegratedProcess:
         print(f"   - 教师数据: {self.teachers_file}")
         print(f"   - 考场数据: {self.rooms_file}")
 
+    def _save_intermediate_exam_schedule(self, exam_schedule: List[Dict]):
+        """保存中间考试安排文件"""
+        """保存中间考试安排到JSON文件，供后续流程直接使用"""
+        intermediate_data = {
+            'version': '1.0',
+            'generated_time': datetime.now().isoformat(),
+            'source': 'exam_arrangement',
+            'exam_count': len(exam_schedule),
+            'exam_schedule': exam_schedule
+        }
+
+        with open(self.intermediate_exam_file, 'w', encoding='utf-8') as f:
+            json.dump(intermediate_data, f, ensure_ascii=False, indent=2)
+
+        print(f"✅ 中间文件已保存: {self.intermediate_exam_file}")
+        print(f"   - 包含 {len(exam_schedule)} 场考试")
+        print(f"   - 生成时间: {intermediate_data['generated_time']}")
+
+    def _load_intermediate_exam_schedule(self) -> List[Dict]:
+        """加载中间考试安排文件"""
+        """从JSON中间文件加载考试安排数据"""
+        try:
+            with open(self.intermediate_exam_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            exam_schedule = data['exam_schedule']
+            print(f"✅ 加载中间文件成功: {self.intermediate_exam_file}")
+            print(f"   - 包含 {len(exam_schedule)} 场考试")
+            print(f"   - 文件版本: {data.get('version', 'unknown')}")
+            print(f"   - 生成时间: {data.get('generated_time', 'unknown')}")
+
+            return exam_schedule
+
+        except Exception as e:
+            print(f"❌ 加载中间文件失败: {e}")
+            raise Exception(f"无法读取中间文件 {self.intermediate_exam_file}: {e}")
+
     def _run_exam_arrangement(self) -> List[Dict]:
         """运行考试安排"""
         print("启动考试时间安排...")
 
-        # 检查是否存在现有的考试安排表.txt
-        existing_file = "考试安排表.txt"
-        if os.path.exists(existing_file):
-            print(f"发现现有考试安排表: {existing_file}")
-            print("跳过考试安排，使用现有数据...")
-            exam_schedule = self._parse_existing_exam_schedule(existing_file)
+        # 🔥 新逻辑：优先检查中间JSON文件
+        if os.path.exists(self.intermediate_exam_file):
+            print(f"发现中间考试安排文件: {self.intermediate_exam_file}")
+            print("直接使用缓存数据，跳过解析过程...")
+            exam_schedule = self._load_intermediate_exam_schedule()
         else:
-            print("未发现现有考试安排表，生成默认安排...")
-            # 创建考试安排器
-            scheduler = ExamScheduler()
-            # 使用预定义的考试安排（避免手动输入）
-            exam_schedule = self._create_default_exam_schedule()
+            # 检查txt文件作为数据源
+            existing_file = "考试安排表.txt"
+            if os.path.exists(existing_file):
+                print(f"发现现有考试安排表: {existing_file}")
+                print("解析txt文件并生成中间缓存文件...")
+                exam_schedule = self._parse_existing_exam_schedule(existing_file)
+            else:
+                print("未发现现有考试安排表，生成默认安排...")
+                # 使用预定义的考试安排（避免手动输入）
+                exam_schedule = self._create_default_exam_schedule()
+
+            # 🔥 保存中间JSON文件供下次使用
+            self._save_intermediate_exam_schedule(exam_schedule)
 
         # 验证时间合理性
         validated_schedule = self._validate_exam_schedule(exam_schedule)
 
-        # 保存考试安排结果
+        # 保存最终结果到exam_schedule.json（保持向后兼容）
         with open(self.exam_schedule_file, 'w', encoding='utf-8') as f:
             json.dump(validated_schedule, f, ensure_ascii=False, indent=2)
 
         print(f"✅ 考试安排完成，共{len(validated_schedule)}场考试")
-        print(f"   - 结果已保存到: {self.exam_schedule_file}")
+        print(f"   - 最终结果已保存到: {self.exam_schedule_file}")
+        if os.path.exists(self.intermediate_exam_file):
+            print(f"   - 缓存文件已保存到: {self.intermediate_exam_file}")
 
         return validated_schedule
 
@@ -258,11 +309,34 @@ class IntegratedProcess:
         """导出最终结果"""
         print("生成最终结果文件...")
 
-        # 导出结果
-        invigilation_scheduler.export_results(
-            self.output_dir,
-            formats=['excel', 'html', 'charts']
-        )
+        # 直接使用可视化模块导出结果
+        visualizer = ResultVisualizer(invigilation_scheduler.result_schedule)
+
+        exported_files = []
+
+        try:
+            # 导出Excel
+            excel_files = visualizer.export_to_excel(self.output_dir)
+            exported_files.extend(excel_files)
+            print("✅ Excel文件导出完成")
+
+            # 导出HTML报告
+            html_file = visualizer.generate_comprehensive_report(self.output_dir)
+            exported_files.append(html_file)
+            print("✅ HTML报告导出完成")
+
+            # 生成图表
+            load_chart = visualizer.plot_load_distribution(self.output_dir)
+            heatmap = visualizer.plot_schedule_heatmap(self.output_dir)
+            exported_files.extend([load_chart, heatmap])
+            print("✅ 可视化图表导出完成")
+
+            print(f"\n📁 总共导出 {len(exported_files)} 个文件:")
+            for file_path in exported_files:
+                print(f"  - {file_path}")
+
+        except Exception as e:
+            print(f"导出结果时出错: {e}")
 
         # 生成综合报告
         self._generate_integrated_report(invigilation_scheduler, exam_schedule)
@@ -338,24 +412,35 @@ class IntegratedProcess:
                 if not line or not ('第' in line and '天' in line):
                     continue
 
-                # 解析格式类似: "第1天   上午     语文     07:30-09:40     150"
-                parts = line.split()
-                if len(parts) >= 4:
+                # 🔧 修复：过滤空字符串，处理多空格分隔问题
+                parts = [p for p in line.split() if p.strip()]
+
+                # 实际格式: "第1天      上午       语文       07:30      10:00      150"
+                if len(parts) >= 6:  # 确保有足够的字段
                     date_part = parts[0]
                     time_slot_part = parts[1]
                     subject_part = parts[2]
-                    time_part = parts[3]
+                    start_time = parts[3]        # 🔧 修复：直接获取开始时间
+                    end_time = parts[4]          # 🔧 修复：直接获取结束时间
 
-                    # 提取时间
-                    start_time, end_time = time_part.split('-') if '-' in time_part else ('07:30', '09:30')
+                    # 🔧 修复：验证时间格式
+                    time_pattern = re.compile(r'^\d{2}:\d{2}$')
+                    if not (time_pattern.match(start_time) and time_pattern.match(end_time)):
+                        print(f"⚠️ 警告：时间格式不正确 {start_time}-{end_time}，使用默认时间")
+                        start_time, end_time = '07:30', '09:30'
 
-                    # 根据科目确定时长
+                    # 根据科目确定时长（备用方案）
                     duration_map = {
                         '语文': 150, '数学': 120, '英语': 120, '外语': 120,
                         '物理': 90, '化学': 90, '生物': 90,
                         '历史': 90, '地理': 90, '政治': 90, '技术': 90
                     }
-                    duration = duration_map.get(subject_part, 120)
+
+                    # 🔧 修复：优先使用文件中的时长，其次使用科目映射
+                    try:
+                        duration = int(parts[5])
+                    except (ValueError, IndexError):
+                        duration = duration_map.get(subject_part, 120)
 
                     exam_schedule.append({
                         'date': date_part,
@@ -365,6 +450,8 @@ class IntegratedProcess:
                         'end_time': end_time,
                         'duration': duration
                     })
+                else:
+                    print(f"⚠️ 警告：跳过格式不正确的行: {line}")
 
             print(f"解析出 {len(exam_schedule)} 场考试")
             return exam_schedule

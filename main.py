@@ -200,52 +200,6 @@ class IntelligentExamScheduler:
             print(f"  负荷最小教师: {min(teacher_stats, key=lambda x: x['total_weighted_load'])['teacher_name']} "
                   f"({min(loads):.2f})")
 
-    def export_results(self, output_dir: str = "output", formats: list = None):
-        """导出结果"""
-        if not self.result_schedule:
-            print("还没有求解结果，请先运行求解")
-            return
-
-        if formats is None:
-            formats = ['excel', 'html', 'charts']
-
-        print(f"\n=== 导出结果到 {output_dir} ===")
-
-        visualizer = ResultVisualizer(self.result_schedule)
-        exported_files = []
-
-        try:
-            # 导出Excel
-            if 'excel' in formats:
-                excel_files = visualizer.export_to_excel(output_dir)
-                exported_files.extend(excel_files)
-                print(f"✅ Excel文件导出完成")
-
-            # 导出HTML报告
-            if 'html' in formats:
-                html_file = visualizer.generate_comprehensive_report(output_dir)
-                exported_files.append(html_file)
-                print(f"✅ HTML报告导出完成")
-
-            # 生成图表
-            if 'charts' in formats:
-                load_chart = visualizer.plot_load_distribution(output_dir)
-                heatmap = visualizer.plot_schedule_heatmap(output_dir)
-                exported_files.extend([load_chart, heatmap])
-                print(f"✅ 可视化图表导出完成")
-
-            # 导出CSV
-            if 'csv' in formats:
-                csv_files = visualizer.export_to_csv(output_dir)
-                exported_files.extend(csv_files)
-                print(f"✅ CSV文件导出完成")
-
-            print(f"\n📁 总共导出 {len(exported_files)} 个文件:")
-            for file_path in exported_files:
-                print(f"  - {file_path}")
-
-        except Exception as e:
-            print(f"导出结果时出错: {e}")
 
     def run_benchmark(self, sizes: list = None, algorithms: list = None):
         """运行基准测试"""
@@ -327,14 +281,10 @@ def main():
                        default='small', help='测试数据规模')
     parser.add_argument('--algorithm', choices=['ortools', 'deap', 'auto'],
                        default='auto', help='求解算法')
-    parser.add_argument('--output', default='output', help='输出目录')
-    parser.add_argument('--formats', nargs='+', choices=['excel', 'html', 'charts', 'csv'],
-                       default=['excel', 'html'], help='导出格式')
     parser.add_argument('--time-limit', type=int, default=60, help='OR-Tools求解时间限制(秒)')
     parser.add_argument('--population', type=int, default=200, help='DEAP种群大小')
     parser.add_argument('--generations', type=int, default=100, help='DEAP迭代代数')
     parser.add_argument('--benchmark', action='store_true', help='运行基准测试')
-    parser.add_argument('--no-export', action='store_true', help='不导出结果文件')
 
     args = parser.parse_args()
 
@@ -366,9 +316,6 @@ def main():
         # 分析结果
         scheduler.analyze_result()
 
-        # 导出结果
-        if not args.no_export:
-            scheduler.export_results(args.output, args.formats)
 
     except KeyboardInterrupt:
         print("\n用户中断操作")

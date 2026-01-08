@@ -176,36 +176,36 @@ class ResultVisualizer:
 
         # 创建子图
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
-        fig.suptitle('监考安排负荷分析', fontsize=16)
+        fig.suptitle('Invigilation Load Analysis', fontsize=16)
 
         # 1. 负荷分布直方图
         ax1.hist(loads, bins=20, alpha=0.7, color=self.colors[0])
-        ax1.set_title('教师负荷分布')
-        ax1.set_xlabel('加权总负荷')
-        ax1.set_ylabel('教师人数')
+        ax1.set_title('Teacher Load Distribution')
+        ax1.set_xlabel('Weighted Total Load')
+        ax1.set_ylabel('Number of Teachers')
         ax1.grid(True, alpha=0.3)
 
         # 2. 负荷箱线图
         ax2.boxplot(loads)
-        ax2.set_title('负荷分布箱线图')
-        ax2.set_ylabel('加权总负荷')
+        ax2.set_title('Load Distribution Box Plot')
+        ax2.set_ylabel('Weighted Total Load')
         ax2.grid(True, alpha=0.3)
 
         # 3. 负荷排序图
         sorted_loads = sorted(loads)
         ax3.plot(range(len(sorted_loads)), sorted_loads, color=self.colors[2])
-        ax3.set_title('教师负荷排序图')
-        ax3.set_xlabel('教师排名')
-        ax3.set_ylabel('加权总负荷')
+        ax3.set_title('Teacher Load Ranking')
+        ax3.set_xlabel('Teacher Rank')
+        ax3.set_ylabel('Weighted Total Load')
         ax3.grid(True, alpha=0.3)
 
         # 4. 长时科目分布
         long_counts = [stat['long_exam_count'] for stat in teacher_stats]
         unique, counts = np.unique(long_counts, return_counts=True)
         ax4.bar(unique, counts, color=self.colors[3])
-        ax4.set_title('长时科目监考次数分布')
-        ax4.set_xlabel('长时科目监考次数')
-        ax4.set_ylabel('教师人数')
+        ax4.set_title('Long Exam Supervision Count Distribution')
+        ax4.set_xlabel('Long Exam Supervision Count')
+        ax4.set_ylabel('Number of Teachers')
         ax4.grid(True, alpha=0.3)
 
         plt.tight_layout()
@@ -217,7 +217,7 @@ class ResultVisualizer:
         plt.savefig(image_path, dpi=300, bbox_inches='tight')
         plt.close()
 
-        print(f"负荷分布图已保存: {image_path}")
+        print(f"Load distribution chart saved: {image_path}")
         return image_path
 
     def plot_schedule_heatmap(self, output_dir: str = "output") -> str:
@@ -245,11 +245,11 @@ class ResultVisualizer:
                    xticklabels=time_labels,
                    yticklabels=teacher_labels,
                    cmap="YlOrRd",
-                   cbar_kws={'label': '任务类型'})
+                   cbar_kws={'label': 'Task Type'})
 
-        plt.title('监考安排热力图', fontsize=16)
-        plt.xlabel('时间段')
-        plt.ylabel('教师')
+        plt.title('Invigilation Schedule Heatmap', fontsize=16)
+        plt.xlabel('Time Slot')
+        plt.ylabel('Teacher')
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
 
@@ -260,7 +260,7 @@ class ResultVisualizer:
         plt.savefig(image_path, dpi=300, bbox_inches='tight')
         plt.close()
 
-        print(f"监考安排热力图已保存: {image_path}")
+        print(f"Invigilation schedule heatmap saved: {image_path}")
         return image_path
 
     def export_to_excel(self, output_dir: str = "output") -> List[str]:
@@ -272,26 +272,25 @@ class ResultVisualizer:
         excel_path = os.path.join(output_dir, f"监考安排表_{timestamp}.xlsx")
 
         with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-            # 1. 监考安排表（新格式，类似Excel文件中的格式）
+            # 1. 监考安排表（主要的统一表格）
             self._export_monitoring_sheet(writer)
 
             # 2. 总监考表
             self._export_overall_sheet(writer)
 
-            # 3. 按教师分表
-            self._export_by_teacher_sheet(writer)
-
-            # 4. 按时间分表
-            self._export_by_time_sheet(writer)
-
-            # 5. 按考场分表
-            self._export_by_room_sheet(writer)
-
-            # 6. 统计报表
+            # 3. 统计报表
             self._export_statistics_sheet(writer)
 
-            # 7. 冲突报告
+            # 4. 冲突报告
             self._export_conflicts_sheet(writer)
+
+            # 以下工作表已注释掉，减少输出文件复杂度：
+            # - 按教师分表（教师个人表）
+            # - 按时间分表（时间段详细表）
+            # - 按考场分表（考场详细表）
+            # self._export_by_teacher_sheet(writer)
+            # self._export_by_time_sheet(writer)
+            # self._export_by_room_sheet(writer)
 
         print(f"Excel文件已导出: {excel_path}")
         return [excel_path]
