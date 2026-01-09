@@ -189,8 +189,12 @@ class ExamScheduler:
         if save_choice == 'y':
             self.save_to_file(schedule)
 
-    def save_to_file(self, schedule: List[Dict], filename: str = "考试安排表.txt"):
+    def save_to_file(self, schedule: List[Dict], filename: str = None):
         """保存安排到文件"""
+        import os
+        if filename is None:
+            os.makedirs("process_data", exist_ok=True)
+            filename = os.path.join("process_data", "考试安排表.txt")
         try:
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write("="*80 + "\n")

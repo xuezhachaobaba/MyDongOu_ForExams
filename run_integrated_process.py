@@ -157,15 +157,39 @@ class IntegratedProcess:
             exam_schedule = self._load_intermediate_exam_schedule()
         else:
             # 检查txt文件作为数据源
-            existing_file = "考试安排表.txt"
+            existing_file = os.path.join(self.data_dir, "考试安排表.txt")
             if os.path.exists(existing_file):
                 print(f"发现现有考试安排表: {existing_file}")
                 print("解析txt文件并生成中间缓存文件...")
                 exam_schedule = self._parse_existing_exam_schedule(existing_file)
             else:
-                print("未发现现有考试安排表，生成默认安排...")
-                # 使用预定义的考试安排（避免手动输入）
-                exam_schedule = self._create_default_exam_schedule()
+                print("未发现现有考试安排表和缓存文件")
+                print("请选择数据来源：")
+                print("0 - 使用默认数据")
+                print("1 - 手动输入数据")
+
+                while True:
+                    choice = input("请输入选择（0或1）: ").strip()
+                    if choice == '0':
+                        print("使用默认考试安排...")
+                        exam_schedule = self._create_default_exam_schedule()
+                        break
+                    elif choice == '1':
+                        print("启动手动输入模式...")
+                        scheduler = ExamScheduler()
+                        scheduler.interactive_mode()
+
+                        # 手动输入完成后，解析生成的文件
+                        generated_file = os.path.join(self.data_dir, "考试安排表.txt")
+                        if os.path.exists(generated_file):
+                            print(f"解析手动输入的考试安排: {generated_file}")
+                            exam_schedule = self._parse_existing_exam_schedule(generated_file)
+                        else:
+                            print("未找到手动输入的文件，使用默认安排...")
+                            exam_schedule = self._create_default_exam_schedule()
+                        break
+                    else:
+                        print("无效选择，请输入0或1")
 
             # 🔥 保存中间JSON文件供下次使用
             self._save_intermediate_exam_schedule(exam_schedule)
@@ -327,8 +351,7 @@ class IntegratedProcess:
 
             # 生成图表
             load_chart = visualizer.plot_load_distribution(self.output_dir)
-            heatmap = visualizer.plot_schedule_heatmap(self.output_dir)
-            exported_files.extend([load_chart, heatmap])
+            exported_files.extend([load_chart])
             print("✅ 可视化图表导出完成")
 
             print(f"\n📁 总共导出 {len(exported_files)} 个文件:")
