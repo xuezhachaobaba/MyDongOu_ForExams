@@ -275,13 +275,16 @@ class ResultVisualizer:
             # 1. 监考安排表（主要的统一表格）
             self._export_monitoring_sheet(writer)
 
-            # 2. 总监考表
+            # 2. 考场安排表（新添加的考试安排表格式）
+            self._export_exam_arrangement_sheet(writer)
+
+            # 3. 总监考表
             self._export_overall_sheet(writer)
 
-            # 3. 统计报表
+            # 4. 统计报表
             self._export_statistics_sheet(writer)
 
-            # 4. 冲突报告
+            # 5. 冲突报告
             self._export_conflicts_sheet(writer)
 
             # 以下工作表已注释掉，减少输出文件复杂度：
@@ -296,23 +299,23 @@ class ResultVisualizer:
         return [excel_path]
 
     def _export_monitoring_sheet(self, writer):
-        """导出监考安排表（类似Excel文件中的格式）"""
+        """导出考试安排表（以班级为纵轴的格式）"""
         # 获取所有时间段，按日期和时间排序
         time_slots = sorted(self.schedule.time_slots, key=lambda x: (x.date, x.start_time))
 
-        # 按日期分组时间段
+        # 按日期分组时间段，并按上下午分类
         dates = sorted(set(ts.date for ts in time_slots))
         date_time_slots = {date: [ts for ts in time_slots if ts.date == date] for date in dates}
 
-        # 获取所有考场（按名称排序）
-        rooms = sorted(self.schedule.rooms, key=lambda x: x.name)
+        # 提取所有班级信息
+        classes = self._extract_class_info()
 
         # 构建列名和数据
-        columns = self._build_monitoring_columns(dates, date_time_slots)
+        columns = self._build_class_based_columns(dates, date_time_slots)
         data_rows = []
 
-        for room in rooms:
-            row = self._build_monitoring_row(room, dates, date_time_slots)
+        for class_info in classes:
+            row = self._build_class_based_row(class_info, dates, date_time_slots)
             data_rows.append(row)
 
         # 创建DataFrame
@@ -320,6 +323,220 @@ class ResultVisualizer:
 
         # 导出到Excel
         df.to_excel(writer, sheet_name="监考安排表", index=False)
+
+    def _export_exam_arrangement_sheet(self, writer):
+        """导出考试安排表（科目+考场为纵轴，时间段为横轴）"""
+        # 获取所有考试科目
+        subjects = sorted(set(exam.subject.value for exam in self.schedule.exams))
+
+        # 获取所有时间段，按时间段类型分组（上午/下午）
+        time_slots = sorted(self.schedule.time_slots, key=lambda x: (x.date, x.start_time))
+
+        # 构建时间段分类
+        time_periods = {}
+        for ts in time_slots:
+            period_name = ts.name.split()[0] if ' ' in ts.name else ts.name  # 提取"上午"/"下午"
+            if period_name not in time_periods:
+                time_periods[period_name] = []
+            time_periods[period_name].append(ts)
+
+        # 构建列名（时间段）
+        columns = ['科目', '考场']
+        for period_name in sorted(time_periods.keys()):
+            columns.append(period_name)
+
+        # 构建数据行
+        data_rows = []
+
+        # 为每个科目分配考场
+        for subject in subjects:
+            # 找到该科目的所有考试
+            subject_exams = [exam for exam in self.schedule.exams if exam.subject.value == subject]
+
+            if subject_exams:
+                # 为每个考场创建一行
+                for exam in subject_exams:
+                    for room in exam.rooms:
+                        row = [subject, room.name]
+
+                        # 为每个时间段填充数据
+                        for period_name in sorted(time_periods.keys()):
+                            # 检查该科目在该时间段是否有考试
+                            has_exam = False
+                            for ts in time_periods[period_name]:
+                                for e in subject_exams:
+                                    if e.time_slot.id == ts.id:
+                                        row.append(f"考试")
+                                        has_exam = True
+                                        break
+                                if has_exam:
+                                    break
+
+                            if not has_exam:
+                                row.append("")
+
+                        data_rows.append(row)
+
+        # 如果没有数据，创建空表
+        if not data_rows:
+            for subject in subjects:
+                row = [subject, ""]
+                for period_name in sorted(time_periods.keys()):
+                    row.append("")
+                data_rows.append(row)
+
+        # 创建DataFrame
+        df = pd.DataFrame(data_rows, columns=columns)
+
+        # 导出到Excel
+        df.to_excel(writer, sheet_name="考场安排", index=False)
+
+    def _extract_class_info(self):
+        """从考场信息中生成班级信息，模拟真实的班级考试安排"""
+        classes = []
+
+        # 按考场排序，确保班级分配的一致性
+        rooms = sorted(self.schedule.rooms, key=lambda x: (x.name, x.id))
+
+        class_number = 1
+        for i, room in enumerate(rooms):
+            # 模拟班级分配逻辑
+            # 根据考场容量决定是理科班还是文科班
+            if room.capacity >= 50:
+                # 大容量考场安排理科班（物化技）
+                class_type = "物化技"
+            elif room.capacity <= 35:
+                # 小容量考场安排理科班
+                class_type = "物化生"
+            else:
+                # 中等容量考场安排文科班
+                class_type = "政史地"
+
+            # 生成班级名称和编号
+            class_name = f"高二{class_number}班 {class_type}"
+            class_id = f"{5000 + class_number:04d}"  # 模拟考场编号格式
+
+            classes.append({
+                'name': class_name,
+                'id': class_id,
+                'room': room,
+                'class_number': class_number,
+                'class_type': class_type
+            })
+
+            class_number += 1
+
+        return classes
+
+    def _build_class_based_columns(self, dates, date_time_slots):
+        """构建基于班级的列名结构"""
+        columns = ['班级', '班级编号']
+
+        for date in dates:
+            time_slots_for_date = date_time_slots[date]
+
+            # 为每个日期创建上午和下午的列
+            morning_slots = [ts for ts in time_slots_for_date if '上午' in ts.name]
+            afternoon_slots = [ts for ts in time_slots_for_date if '下午' in ts.name]
+
+            # 上午科目、时间、考场、监考教师列
+            for i, ts in enumerate(morning_slots):
+                exam_subject = self._get_exam_subject_for_timeslot(ts)
+                # 简化列名格式：日期_时段序号_科目_字段
+                period_num = i + 1  # 时段序号
+                columns.append(f"{date}_上午{period_num}_{exam_subject}_科目")
+                columns.append(f"{date}_上午{period_num}_时间")
+                columns.append(f"{date}_上午{period_num}_考场")
+                columns.append(f"{date}_上午{period_num}_监考教师A")
+                columns.append(f"{date}_上午{period_num}_监考教师B")
+
+            # 下午科目、时间、考场、监考教师列
+            for i, ts in enumerate(afternoon_slots):
+                exam_subject = self._get_exam_subject_for_timeslot(ts)
+                # 简化列名格式：日期_时段序号_科目_字段
+                period_num = i + 1  # 时段序号
+                columns.append(f"{date}_下午{period_num}_{exam_subject}_科目")
+                columns.append(f"{date}_下午{period_num}_时间")
+                columns.append(f"{date}_下午{period_num}_考场")
+                columns.append(f"{date}_下午{period_num}_监考教师A")
+                columns.append(f"{date}_下午{period_num}_监考教师B")
+
+        return columns
+
+    def _build_class_based_row(self, class_info, dates, date_time_slots):
+        """为指定班级构建一行数据"""
+        row_data = [class_info['name'], class_info['id']]
+
+        for date in dates:
+            time_slots_for_date = date_time_slots[date]
+
+            # 为每个日期创建上午和下午的列
+            morning_slots = [ts for ts in time_slots_for_date if '上午' in ts.name]
+            afternoon_slots = [ts for ts in time_slots_for_date if '下午' in ts.name]
+
+            # 上午科目、时间、考场、监考教师列（使用时段序号）
+            for ts in morning_slots:
+                exam_info = self._get_class_exam_info(class_info['room'].id, ts.id)
+
+                if exam_info:
+                    row_data.extend([
+                        exam_info['subject'],
+                        exam_info['time'],
+                        exam_info['room'],
+                        exam_info['teacher_a'],
+                        exam_info['teacher_b']
+                    ])
+                else:
+                    row_data.extend(["", "", "", "", ""])
+
+            # 下午科目、时间、考场、监考教师列（使用时段序号）
+            for ts in afternoon_slots:
+                exam_info = self._get_class_exam_info(class_info['room'].id, ts.id)
+
+                if exam_info:
+                    row_data.extend([
+                        exam_info['subject'],
+                        exam_info['time'],
+                        exam_info['room'],
+                        exam_info['teacher_a'],
+                        exam_info['teacher_b']
+                    ])
+                else:
+                    row_data.extend(["", "", "", "", ""])
+
+        return row_data
+
+    def _get_class_exam_info(self, room_id, time_slot_id):
+        """获取指定班级（考场）在指定时间段的考试信息和监考教师"""
+        exam_info = {
+            'subject': '',
+            'time': '',
+            'room': '',
+            'teacher_a': '',
+            'teacher_b': ''
+        }
+
+        # 获取考试信息
+        for assignment in self.schedule.assignments:
+            if (assignment.room.id == room_id and
+                assignment.time_slot.id == time_slot_id and
+                assignment.is_invigilation):
+                exam_info.update({
+                    'subject': assignment.subject.value,
+                    'time': f"{assignment.time_slot.start_time}-{assignment.time_slot.end_time}",
+                    'room': assignment.room.name
+                })
+
+        # 获取监考教师信息
+        teachers = self._get_teachers_for_room_timeslot(room_id, time_slot_id)
+        if len(teachers) >= 2:
+            exam_info['teacher_a'] = teachers[0]
+            exam_info['teacher_b'] = teachers[1]
+        elif len(teachers) == 1:
+            exam_info['teacher_a'] = teachers[0]
+            exam_info['teacher_b'] = ''
+
+        return exam_info if exam_info['subject'] else None
 
     def _build_monitoring_columns(self, dates, date_time_slots):
         """构建监考安排表的列名"""
