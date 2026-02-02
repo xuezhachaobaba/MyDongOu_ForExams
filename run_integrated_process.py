@@ -265,10 +265,37 @@ class IntegratedProcess:
         """运行数据转换"""
         print("转换考试安排数据为排考系统格式...")
 
+        # 🔥 修复：先加载教师数据以获取实际教师数量
+        pre_generated_teachers = self._load_pre_generated_teachers()
+        pre_generated_rooms = self._load_pre_generated_rooms()
+
+        # 🔥 修复：动态计算每科目教师数量，适应67个老师的情况
+        if pre_generated_teachers:
+            from models import SubjectType
+            teacher_count = len(pre_generated_teachers)
+            subjects_count = len(list(SubjectType))
+
+            # 计算每个科目应该分配的教师数量
+            # 确保每个科目至少有1个老师，其余均匀分配
+            teachers_per_subject = max(1, teacher_count // subjects_count)
+
+            print(f"📊 动态计算教师分配:")
+            print(f"   - 总教师数量: {teacher_count}")
+            print(f"   - 科目数量: {subjects_count}")
+            print(f"   - 每科目教师数: {teachers_per_subject}")
+
+            # 检查教师数量是否足够满足基本需求
+            if teacher_count < subjects_count:
+                print(f"⚠️ 警告：教师数量({teacher_count})少于科目数量({subjects_count})，某些科目可能没有教师")
+        else:
+            # 如果没有加载到教师数据，使用默认值
+            teachers_per_subject = 8
+            print("⚠️ 未加载到教师数据，使用默认每科目教师数: 8")
+
         # 创建转换配置
         conversion_config = ConversionConfig(
             student_count_per_class=40,
-            teachers_per_subject=8,
+            teachers_per_subject=teachers_per_subject,
             room_allocation_strategy="grade_based",
             historical_load_min=100.0,
             historical_load_max=500.0
@@ -276,10 +303,6 @@ class IntegratedProcess:
 
         # 创建转换器
         converter = ScheduleConverter(conversion_config)
-
-        # 加载预生成的教师和考场数据
-        pre_generated_teachers = self._load_pre_generated_teachers()
-        pre_generated_rooms = self._load_pre_generated_rooms()
 
         # 执行转换，使用预生成的数据
         converted_schedule = converter.convert(

@@ -433,20 +433,22 @@ class ScheduleConverter:
             base_date = datetime.strptime("2024-01-15", "%Y-%m-%d")
             actual_date = (base_date + timedelta(days=day_num-1)).strftime("%Y-%m-%d")
 
-            # 查找时间段
+            # 🔧 修复：使用精确的时间匹配，避免时间冲突
             time_slot = None
             for slot in self.time_slots:
                 if (slot.date == actual_date and
                     exam_schedule['time_slot'] in slot.name and
-                    abs(self._calculate_duration(slot.start_time, slot.end_time) -
-                        exam_schedule['duration']) < 30):
+                    slot.start_time == exam_schedule['start_time'] and
+                    slot.end_time == exam_schedule['end_time']):
                     time_slot = slot
                     break
 
             if not time_slot:
-                # 如果找不到精确匹配，使用该日期的第一个时间段
+                # 如果找不到精确匹配，尝试基于开始时间的近似匹配
                 for slot in self.time_slots:
-                    if slot.date == actual_date:
+                    if (slot.date == actual_date and
+                        exam_schedule['time_slot'] in slot.name and
+                        slot.start_time == exam_schedule['start_time']):
                         time_slot = slot
                         break
 
