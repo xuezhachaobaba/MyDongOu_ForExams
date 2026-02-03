@@ -14,29 +14,35 @@ from typing import Dict, Any, List
 # 导入各个组件
 from basic_data_generator import BasicDataGenerator
 from exam_scheduler import ExamScheduler
-from schedule_converter import ScheduleConverter, ConversionConfig
+from schedule_converter import ScheduleConverter, ConversionConfig  # 保留向后兼容
 from main import IntelligentExamScheduler
 from visualization import ResultVisualizer
+
+# 导入新的优化模块
+from conversion_manager import ConversionManager, convert_exam_schedule_simple
+from validators import validate_all_data_files, create_exam_schedule_validator
+from utils import FileUtils, ParseUtils, ModelUtils
+from config import PathConfig
 
 
 class IntegratedProcess:
     """整合流程执行器"""
 
     def __init__(self):
-        self.data_dir = "process_data"
-        self.output_dir = "output"
+        # 使用统一路径配置
+        self.data_dir = PathConfig.DATA_DIR
+        self.output_dir = PathConfig.OUTPUT_DIR
 
         # 创建目录
         os.makedirs(self.data_dir, exist_ok=True)
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # 文件路径
-        self.teachers_file = os.path.join(self.data_dir, "teachers.json")
-        self.rooms_file = os.path.join(self.data_dir, "rooms.json")
-        self.exam_schedule_file = os.path.join(self.data_dir, "exam_schedule.json")
-        self.converted_data_file = os.path.join(self.data_dir, "converted_schedule.json")
-        # 新增：中间考试安排JSON文件
-        self.intermediate_exam_file = os.path.join(self.data_dir, "intermediate_exam_schedule.json")
+        # 使用PathConfig统一文件路径
+        self.teachers_file = PathConfig.get_teachers_file()
+        self.rooms_file = PathConfig.get_rooms_file()
+        self.exam_schedule_file = PathConfig.get_exam_schedule_file()
+        self.converted_data_file = PathConfig.get_converted_data_file()
+        self.intermediate_exam_file = PathConfig.get_intermediate_exam_file()
 
     def run_complete_process(self, skip_data_generation=False):
         """运行完整流程"""
@@ -101,50 +107,49 @@ class IntegratedProcess:
         print(f"   - 考场数据: {self.rooms_file}")
 
     def _verify_basic_data_exists(self):
-        """验证基础数据是否存在"""
-        if not (os.path.exists(self.teachers_file) and os.path.exists(self.rooms_file)):
-            raise Exception("基础数据文件不存在，请先运行基础数据生成")
+        """验证基础数据是否存在（使用新的验证器）"""
+        # 使用新的验证器
+        is_valid, errors = validate_all_data_files(self.teachers_file, self.rooms_file)
 
-        print(f"✅ 找到现有基础数据:")
+        if not is_valid:
+            print("❌ 基础数据验证失败:")
+            for error in errors:
+                print(f"   - {error}")
+            raise Exception("基础数据文件不存在或无效，请先运行基础数据生成")
+
+        print(f"✅ 找到现有基础数据并验证通过:")
         print(f"   - 教师数据: {self.teachers_file}")
         print(f"   - 考场数据: {self.rooms_file}")
 
     def _save_intermediate_exam_schedule(self, exam_schedule: List[Dict]):
-        """保存中间考试安排文件"""
-        """保存中间考试安排到JSON文件，供后续流程直接使用"""
-        intermediate_data = {
-            'version': '1.0',
-            'generated_time': datetime.now().isoformat(),
-            'source': 'exam_arrangement',
-            'exam_count': len(exam_schedule),
-            'exam_schedule': exam_schedule
-        }
+        """保存中间考试安排文件（使用新的工具）"""
+        # 使用新的模型工具创建中间数据
+        intermediate_data = ModelUtils.create_intermediate_exam_schedule(exam_schedule)
 
-        with open(self.intermediate_exam_file, 'w', encoding='utf-8') as f:
-            json.dump(intermediate_data, f, ensure_ascii=False, indent=2)
-
-        print(f"✅ 中间文件已保存: {self.intermediate_exam_file}")
-        print(f"   - 包含 {len(exam_schedule)} 场考试")
-        print(f"   - 生成时间: {intermediate_data['generated_time']}")
+        # 使用文件工具保存
+        if FileUtils.save_json(intermediate_data, self.intermediate_exam_file):
+            print(f"✅ 中间文件已保存: {self.intermediate_exam_file}")
+            print(f"   - 包含 {len(exam_schedule)} 场考试")
+            print(f"   - 生成时间: {intermediate_data['generated_time']}")
+        else:
+            print(f"❌ 保存中间文件失败: {self.intermediate_exam_file}")
 
     def _load_intermediate_exam_schedule(self) -> List[Dict]:
-        """加载中间考试安排文件"""
-        """从JSON中间文件加载考试安排数据"""
-        try:
-            with open(self.intermediate_exam_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+        """加载中间考试安排文件（使用新的工具）"""
+        # 使用文件工具加载
+        data = FileUtils.load_json(self.intermediate_exam_file)
 
-            exam_schedule = data['exam_schedule']
-            print(f"✅ 加载中间文件成功: {self.intermediate_exam_file}")
-            print(f"   - 包含 {len(exam_schedule)} 场考试")
-            print(f"   - 文件版本: {data.get('version', 'unknown')}")
-            print(f"   - 生成时间: {data.get('generated_time', 'unknown')}")
+        if not data or 'exam_schedule' not in data:
+            print(f"❌ 加载中间文件失败: 文件格式错误或不存在")
+            raise Exception(f"无法读取中间文件 {self.intermediate_exam_file}")
 
-            return exam_schedule
+        exam_schedule = data['exam_schedule']
+        print(f"✅ 加载中间文件成功: {self.intermediate_exam_file}")
+        print(f"   - 包含 {len(exam_schedule)} 场考试")
+        print(f"   - 文件版本: {data.get('version', 'unknown')}")
+        print(f"   - 生成时间: {data.get('generated_time', 'unknown')}")
 
-        except Exception as e:
-            print(f"❌ 加载中间文件失败: {e}")
-            raise Exception(f"无法读取中间文件 {self.intermediate_exam_file}: {e}")
+        return exam_schedule
 
     def _run_exam_arrangement(self) -> List[Dict]:
         """运行考试安排"""
@@ -262,68 +267,25 @@ class IntegratedProcess:
         return validated_schedule
 
     def _run_data_conversion(self, exam_schedule: List[Dict]):
-        """运行数据转换"""
-        print("转换考试安排数据为排考系统格式...")
+        """运行数据转换（使用新的简化流程）"""
+        print("🔄 使用简化的数据转换流程...")
 
-        # 🔥 修复：先加载教师数据以获取实际教师数量
-        pre_generated_teachers = self._load_pre_generated_teachers()
-        pre_generated_rooms = self._load_pre_generated_rooms()
+        # 使用新的转换管理器
+        manager = ConversionManager()
 
-        # 🔥 修复：动态计算每科目教师数量，适应67个老师的情况
-        if pre_generated_teachers:
-            from models import SubjectType
-            teacher_count = len(pre_generated_teachers)
-            subjects_count = len(list(SubjectType))
-
-            # 计算每个科目应该分配的教师数量
-            # 确保每个科目至少有1个老师，其余均匀分配
-            teachers_per_subject = max(1, teacher_count // subjects_count)
-
-            print(f"📊 动态计算教师分配:")
-            print(f"   - 总教师数量: {teacher_count}")
-            print(f"   - 科目数量: {subjects_count}")
-            print(f"   - 每科目教师数: {teachers_per_subject}")
-
-            # 检查教师数量是否足够满足基本需求
-            if teacher_count < subjects_count:
-                print(f"⚠️ 警告：教师数量({teacher_count})少于科目数量({subjects_count})，某些科目可能没有教师")
-        else:
-            # 如果没有加载到教师数据，使用默认值
-            teachers_per_subject = 8
-            print("⚠️ 未加载到教师数据，使用默认每科目教师数: 8")
-
-        # 创建转换配置
-        conversion_config = ConversionConfig(
-            student_count_per_class=40,
-            teachers_per_subject=teachers_per_subject,
-            room_allocation_strategy="grade_based",
-            historical_load_min=100.0,
-            historical_load_max=500.0
-        )
-
-        # 创建转换器
-        converter = ScheduleConverter(conversion_config)
-
-        # 执行转换，使用预生成的数据
-        converted_schedule = converter.convert(
-            exam_schedule,
-            pre_generated_teachers=pre_generated_teachers,
-            pre_generated_rooms=pre_generated_rooms
+        # 执行简化的转换流程
+        converted_schedule = manager.convert_exam_schedule(
+            exam_schedule_data=exam_schedule,
+            base_date="2024-01-15",
+            use_existing_data=True
         )
 
         # 保存转换结果
-        with open(self.converted_data_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                'teachers': [t.__dict__ for t in converted_schedule.teachers],
-                'rooms': [r.__dict__ for r in converted_schedule.rooms],
-                'time_slots': [ts.__dict__ for ts in converted_schedule.time_slots],
-                'exams': [e.__dict__ for e in converted_schedule.exams],
-                'config': converted_schedule.config.__dict__
-            }, f, ensure_ascii=False, indent=2, default=str)
+        manager.save_conversion_results(self.converted_data_file)
 
         # 显示转换摘要
-        summary = converter.get_conversion_summary()
-        print(f"✅ 数据转换完成:")
+        summary = manager.get_conversion_summary()
+        print(f"✅ 简化数据转换完成:")
         print(f"   - 教师数量: {summary['generated_teachers']}")
         print(f"   - 考场数量: {summary['generated_rooms']}")
         print(f"   - 时间段数量: {summary['generated_time_slots']}")
@@ -436,140 +398,43 @@ class IntegratedProcess:
         print(f"✅ 整合报告已生成: {report_file}")
 
     def _parse_existing_exam_schedule(self, file_path: str) -> List[Dict]:
-        """解析现有的考试安排表.txt"""
-        print(f"解析现有考试安排: {file_path}")
+        """解析现有的考试安排表.txt（使用新的解析工具）"""
+        print(f"🔍 使用新解析工具解析考试安排: {file_path}")
 
-        exam_schedule = []
+        # 使用新的解析工具
+        exam_schedule = ParseUtils.parse_exam_schedule_from_text(file_path)
 
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-
-            # 跳过标题行，找到数据开始位置
-            data_start = 0
-            for i, line in enumerate(lines):
-                if "日期" in line and "时间段" in line and "科目" in line:
-                    data_start = i + 2  # 跳过分隔线和表头
-                    break
-
-            # 解析数据行
-            for line in lines[data_start:]:
-                line = line.strip()
-                if not line or not ('第' in line and '天' in line):
-                    continue
-
-                # 🔧 修复：过滤空字符串，处理多空格分隔问题
-                parts = [p for p in line.split() if p.strip()]
-
-                # 实际格式: "第1天      上午       语文       07:30      10:00      150"
-                if len(parts) >= 6:  # 确保有足够的字段
-                    date_part = parts[0]
-                    time_slot_part = parts[1]
-                    subject_part = parts[2]
-                    start_time = parts[3]        # 🔧 修复：直接获取开始时间
-                    end_time = parts[4]          # 🔧 修复：直接获取结束时间
-
-                    # 🔧 修复：验证时间格式
-                    time_pattern = re.compile(r'^\d{2}:\d{2}$')
-                    if not (time_pattern.match(start_time) and time_pattern.match(end_time)):
-                        print(f"⚠️ 警告：时间格式不正确 {start_time}-{end_time}，使用默认时间")
-                        start_time, end_time = '07:30', '09:30'
-
-                    # 根据科目确定时长（备用方案）
-                    duration_map = {
-                        '语文': 150, '数学': 120, '英语': 120, '外语': 120,
-                        '物理': 90, '化学': 90, '生物': 90,
-                        '历史': 90, '地理': 90, '政治': 90, '技术': 90
-                    }
-
-                    # 🔧 修复：优先使用文件中的时长，其次使用科目映射
-                    try:
-                        duration = int(parts[5])
-                    except (ValueError, IndexError):
-                        duration = duration_map.get(subject_part, 120)
-
-                    exam_schedule.append({
-                        'date': date_part,
-                        'time_slot': time_slot_part,
-                        'subject': subject_part,
-                        'start_time': start_time,
-                        'end_time': end_time,
-                        'duration': duration
-                    })
-                else:
-                    print(f"⚠️ 警告：跳过格式不正确的行: {line}")
-
-            print(f"解析出 {len(exam_schedule)} 场考试")
-            return exam_schedule
-
-        except Exception as e:
-            print(f"解析考试安排表失败: {e}")
-            print("使用默认考试安排...")
+        if not exam_schedule:
+            print("⚠️ 解析失败，使用默认考试安排...")
             return self._create_default_exam_schedule()
 
+        return exam_schedule
+
     def _load_pre_generated_teachers(self):
-        """加载预生成的教师数据"""
-        try:
-            with open(self.teachers_file, 'r', encoding='utf-8') as f:
-                teacher_data = json.load(f)
+        """加载预生成的教师数据（使用新的工具）"""
+        # 使用新的数据工具加载和转换
+        teacher_data = FileUtils.load_json(self.teachers_file)
 
-            # 转换为Teacher对象
-            from models import Teacher, SubjectType
-
-            subject_mapping = {
-                '语文': SubjectType.CHINESE, '数学': SubjectType.MATH, '英语': SubjectType.ENGLISH,
-                '外语': SubjectType.ENGLISH, '物理': SubjectType.PHYSICS, '化学': SubjectType.CHEMISTRY,
-                '生物': SubjectType.BIOLOGY, '历史': SubjectType.HISTORY, '地理': SubjectType.GEOGRAPHY,
-                '政治': SubjectType.POLITICS, '技术': SubjectType.SCIENCE
-            }
-
-            teachers = []
-            for teacher_dict in teacher_data:
-                teacher = Teacher(
-                    id=teacher_dict['id'],
-                    name=teacher_dict['name'],
-                    subject=subject_mapping.get(teacher_dict['subject'], SubjectType.CHINESE),
-                    grade=teacher_dict['grade'],
-                    historical_load=teacher_dict['historical_load'],
-                    teaching_schedule=teacher_dict.get('teaching_schedule', {}),
-                    leave_times=teacher_dict.get('leave_times', []),
-                    fixed_duties=teacher_dict.get('fixed_duties', [])
-                )
-                teachers.append(teacher)
-
-            print(f"加载 {len(teachers)} 名预生成教师")
-            return teachers
-
-        except Exception as e:
-            print(f"加载预生成教师数据失败: {e}")
+        if not teacher_data:
+            print(f"加载预生成教师数据失败: 文件不存在或为空")
             return None
+
+        teachers = DataUtils.convert_to_teachers(teacher_data)
+        print(f"✅ 加载 {len(teachers)} 名预生成教师")
+        return teachers
 
     def _load_pre_generated_rooms(self):
-        """加载预生成的考场数据"""
-        try:
-            with open(self.rooms_file, 'r', encoding='utf-8') as f:
-                room_data = json.load(f)
+        """加载预生成的考场数据（使用新的工具）"""
+        # 使用新的数据工具加载和转换
+        room_data = FileUtils.load_json(self.rooms_file)
 
-            # 转换为Room对象
-            from models import Room
-
-            rooms = []
-            for room_dict in room_data:
-                room = Room(
-                    id=room_dict['id'],
-                    name=room_dict['name'],
-                    capacity=room_dict['capacity'],
-                    building=room_dict['building'],
-                    floor=room_dict['floor']
-                )
-                rooms.append(room)
-
-            print(f"加载 {len(rooms)} 个预生成考场")
-            return rooms
-
-        except Exception as e:
-            print(f"加载预生成考场数据失败: {e}")
+        if not room_data:
+            print(f"加载预生成考场数据失败: 文件不存在或为空")
             return None
+
+        rooms = DataUtils.convert_to_rooms(room_data)
+        print(f"✅ 加载 {len(rooms)} 个预生成考场")
+        return rooms
 
 
 def main():

@@ -1,6 +1,20 @@
 """
-数据格式转换器
+数据格式转换器 (已弃用)
 将exam_scheduler.py的考试安排结果转换为智能排考系统所需的完整数据格式
+
+⚠️  警告：此文件已被 conversion_manager.py 中的 ConversionManager 替代
+    为了向后兼容性，此文件暂时保留，但建议使用新的简化转换流程
+
+📖 推荐用法：
+    from conversion_manager import ConversionManager
+    manager = ConversionManager()
+    result = manager.convert_exam_schedule(exam_schedule_data)
+
+🚀 新版本优势：
+    - 更简洁的API
+    - 更好的错误处理
+    - 更高的性能
+    - 统一的验证逻辑
 """
 import random
 from datetime import datetime, timedelta

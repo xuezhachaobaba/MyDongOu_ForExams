@@ -9,38 +9,20 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Tuple
 import sys
 
+# 导入新的配置和工具模块
+from config import ExamConfig, get_exam_duration, get_time_slots, calculate_slot_duration
+from utils import TimeUtils
+
 class ExamScheduler:
     def __init__(self):
-        # 考试时长配置（分钟）
-        self.EXAM_DURATION = {
-            '语文': 150,
-            '数学': 120,
-            '外语': 120,
-            '物理': 90,
-            '化学': 90,
-            '生物': 90,
-            '历史': 90,
-            '地理': 90,
-            '政治': 90,
-            '技术': 90
-        }
-
-        # 时间段配置 (开始时间, 结束时间)
-        self.TIME_SLOTS = {
-            '上午': ('07:30', '12:00'),
-            '下午': ('13:30', '17:25'),
-            '晚上': ('19:30', '21:00')
-        }
-
-        # 考试间隔时间（分钟）
-        self.EXAM_INTERVAL = 20
+        # 使用统一配置（现在从config模块获取）
+        self.EXAM_DURATION = ExamConfig.EXAM_DURATION
+        self.TIME_SLOTS = get_time_slots()
+        self.EXAM_INTERVAL = ExamConfig.EXAM_INTERVAL
 
     def calculate_slot_duration(self, slot_name: str) -> int:
         """计算时间段可用总时长（分钟）"""
-        start_str, end_str = self.TIME_SLOTS[slot_name]
-        start = datetime.strptime(start_str, '%H:%M')
-        end = datetime.strptime(end_str, '%H:%M')
-        return int((end - start).total_seconds() / 60)
+        return calculate_slot_duration(slot_name)
 
     def time_str_to_datetime(self, time_str: str) -> datetime:
         """将时间字符串转换为datetime对象"""
